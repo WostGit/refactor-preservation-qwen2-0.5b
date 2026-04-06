@@ -1,4 +1,4 @@
-name: Agentic Refactor + Full Invariant Preservation (Qwen2.5-3B + Lean 4)
+name: Agentic Refactor + Full Invariant Preservation (Qwen2.5-Coder + Lean 4)
 
 on:
   push:
@@ -19,7 +19,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install dependencies (Qwen2.5-3B on CPU)
+      - name: Install dependencies (Qwen2.5 on CPU)
         run: |
           pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
           pip install transformers huggingface_hub accelerate
@@ -29,7 +29,7 @@ jobs:
           curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y --default-toolchain leanprover/lean4:v4.7.0
           echo "$HOME/.elan/bin" >> $GITHUB_PATH
 
-      - name: Run Qwen2.5-3B agent (Extract Code and Stitch)
+      - name: Run Qwen Agent (Configurable Size)
         run: |
           python - << 'PYEOF'
           import os
@@ -37,8 +37,14 @@ jobs:
           from transformers import AutoModelForCausalLM, AutoTokenizer
           import torch
 
-          print("--- STEP 1: Loading 3B Model ---")
-          model_name = "Qwen/Qwen2.5-3B-Instruct"
+          print("--- STEP 1: Loading Model ---")
+          
+          # --- TOGGLE MODEL SIZE HERE ---
+          # model_name = "Qwen/Qwen2.5-Coder-0.5B-Instruct"  # Fastest, might struggle with logic
+          model_name = "Qwen/Qwen2.5-Coder-1.5B-Instruct"  # Best speed-to-accuracy balance
+          # model_name = "Qwen/Qwen2.5-Coder-3B-Instruct"    # Smartest, but heavy/slow on free CPU
+          
+          print(f"Loading {model_name}...")
           tokenizer = AutoTokenizer.from_pretrained(model_name)
           model = AutoModelForCausalLM.from_pretrained(model_name, dtype=torch.float32, device_map="auto")
 
