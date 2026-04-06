@@ -29,22 +29,17 @@ jobs:
           mkdir -p specs
           cat > specs/account_refactor.spec << 'EOF'
           Refactor the Account module as follows:
-          - Change internal storage from Vec<(String, i64)> to HashMap<String, i64>
+          - Change internal storage from Vec<(String, i64)> to HashMap String Int
           - Add support for batch_deposit (multiple deposits in one call)
           EOF
 
-      - name: Create static Theorem File (The Source of Truth)
+      - name: Create static Theorem File
         run: |
           mkdir -p proofs
           cat > proofs/theorems_template.lean << 'EOF'
           -- DO NOT REMOVE: Your static invariant theorems
           
-          import Std.Data.HashMap
-          open Std
-
-          -- (Put your actual Lean 4 definitions for Account and invariants here)
-          -- For example:
-          
+          -- Your custom proofs/theorems would go here
           theorem non_negative_balance : True := by trivial
           theorem money_conservation : True := by trivial
           theorem audit_integrity : True := by trivial
@@ -52,10 +47,8 @@ jobs:
 
           -- End of Static Theorems
           EOF
-          
-          echo "✅ Created static theorem template."
 
-      - name: Run Qwen2-0.5B agent (Refactor ONLY)
+      - name: Run Qwen2-0.5B agent (With Pure Lean 4 Few-Shot Examples)
         run: |
           python - << 'PYEOF'
           import os
@@ -67,7 +60,7 @@ jobs:
           tokenizer = AutoTokenizer.from_pretrained(model_name)
           model = AutoModelForCausalLM.from_pretrained(
               model_name,
-              torch_dtype=torch.float32,
+              dtype=torch.float32,
               device_map="auto"
           )
 
@@ -78,14 +71,26 @@ jobs:
           with open("proofs/theorems_template.lean") as f:
               theorems = f.read()
 
-          prompt = f"""You are a software engineer specializing in formal methods. 
-          Your task is to refactor the implementation details of a Lean 4 module based on this request:
+          # Providing a strict few-shot example forces the model to use Lean 4 syntax
+          prompt = f"""You are a software engineer specializing in Lean 4 formal methods.
+          Your task is to refactor a Lean 4 module.
+          
+          Request:
           {spec}
 
+          Here is an example of what valid Lean 4 syntax looks like:
+          structure Account where
+            id : String
+            balance : Int
+            transactions : List (String × Int)
+
+          def deposit (acc : Account) (amount : Int) : Account :=
+            {{ acc with balance := acc.balance + amount }}
+
           Instructions:
-          1. Provide ONLY valid Lean 4 code defining the refactored data structures and functions.
-          2. Do NOT output any theorems, proofs, or text explanations.
-          3. Do NOT wrap your code in markdown formatting (like ```lean). Just start typing code.
+          1. Provide ONLY valid Lean 4 code. No Rust, no C++, no markdown blocks.
+          2. Output the new 'structure Account' and the requested functions.
+          3. Do NOT output any theorems or text explanations. Start your response directly with Lean 4 code.
           """
 
           print("\n--- STEP 3: Prompt Sent to Qwen ---")
@@ -98,32 +103,26 @@ jobs:
           outputs = model.generate(
               **inputs,
               max_new_tokens=1000,
-              temperature=0.1,
+              temperature=0.05,
               do_sample=False,
               pad_token_id=tokenizer.eos_token_id
           )
 
           generated = tokenizer.decode(outputs[0], skip_special_tokens=True)
-          
-          # Isolate model response from the repeated prompt
           impl_code = generated[len(prompt):].strip()
           
           print("\n--- STEP 5: Raw Output from Model ---")
           print(impl_code)
           print("-" * 40)
 
-          # Combine the model's implementation with your verified theorems
-          final_file_content = f"{impl_code}\n\n{theorems}"
-
-          print("\n--- STEP 6: Final Combined Lean File ---")
-          print(final_file_content)
-          print("-" * 40)
+          # Stamping the model's generated data structure ahead of the theorems
+          final_file_content = f"import Std.Data.HashMap\nopen Std\n\n{impl_code}\n\n{theorems}"
 
           output_path = "proofs/agent_refactored_account.lean"
           with open(output_path, "w") as f:
               f.write(final_file_content)
 
-          print(f"File successfully stitched and saved to {output_path}")
+          print(f"File stitched and saved to {output_path}")
           PYEOF
 
       - name: Cache Lean Lake
