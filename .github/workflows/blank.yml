@@ -105,11 +105,21 @@ jobs:
           path: ~/.lake
           key: lean4-lake-${{ hashFiles('lakefile.lean') }}
 
-      # --- FIX ADDED HERE ---
       - name: Install Elan and set default toolchain
         run: |
           curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y --default-toolchain stable
           echo "$HOME/.elan/bin" >> $GITHUB_PATH
+
+      # --- FIX ADDED HERE ---
+      - name: Initialize Lake Manifest
+        run: |
+          # If a lakefile doesn't exist, we need to quickly create a dummy one so lake can update
+          if [ ! -f "lakefile.lean" ] && [ ! -f "lakefile.toml" ]; then
+            echo 'import Lake' > lakefile.lean
+            echo 'open Lake DSL' >> lakefile.lean
+            echo 'package account' >> lakefile.lean
+          fi
+          lake update
 
       - name: Lean 4 machine-checked verification
         uses: leanprover/lean-action@v1
