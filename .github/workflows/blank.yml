@@ -1,4 +1,4 @@
-name: Agentic Refactor + Full Invariant Preservation (Qwen2-0.5B + Lean 4)
+name: Agentic Refactor + Full Invariant Preservation (Qwen2.5-3B + Lean 4)
 
 on:
   push:
@@ -19,7 +19,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install dependencies (Qwen2-0.5B on CPU)
+      - name: Install dependencies (Qwen2.5-3B on CPU)
         run: |
           pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
           pip install transformers huggingface_hub accelerate
@@ -29,49 +29,51 @@ jobs:
           curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y --default-toolchain leanprover/lean4:v4.7.0
           echo "$HOME/.elan/bin" >> $GITHUB_PATH
 
-      - name: Run Qwen2-0.5B agent (Force Math Completion)
+      - name: Run Qwen2.5-3B agent (Extract Code and Stitch)
         run: |
           python - << 'PYEOF'
           import os
+          import re
           from transformers import AutoModelForCausalLM, AutoTokenizer
           import torch
 
-          print("--- STEP 1: Loading Model ---")
-          model_name = "Qwen/Qwen2-0.5B-Instruct"
+          print("--- STEP 1: Loading 3B Model ---")
+          # Upgraded to 3B for better instruction following!
+          model_name = "Qwen/Qwen2.5-3B-Instruct"
           tokenizer = AutoTokenizer.from_pretrained(model_name)
           model = AutoModelForCausalLM.from_pretrained(model_name, dtype=torch.float32, device_map="auto")
 
-          # We force the model's hand by completing the function header for it
-          prompt = """<|im_start|>system
-          You are a specialized code completion model for Lean 4.
-          Complete the following function mathematically. Output ONLY the closing code.
-          <|im_end|>
-          <|im_start|>user
-          Complete the math for this function:
+          prompt = """You are a software engineer specializing in Lean 4 formal methods.
+          Your task is to write a single Lean 4 function.
+          
+          Request:
+          Add support for batch_deposit (multiple deposits in one call).
+
+          Here is an example of what valid Lean 4 syntax looks like:
+          ```lean
           def deposit (current_balance : Int) (deposit_amount : Int) : Int :=
-          <|im_end|>
-          <|im_start|>assistant
-          current_balance +"""
+            current_balance + deposit_amount
+          ```
+
+          Instructions:
+          1. Provide only the requested function.
+          2. You MUST wrap your valid Lean 4 response inside a ```lean code block.
+          """
 
           print("\n--- STEP 2: Generating Response ---")
           inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
-          
-          # Max tokens limited to 10 so it literally CANNOT ramble in English
-          outputs = model.generate(**inputs, max_new_tokens=10, temperature=0.1, do_sample=False, pad_token_id=tokenizer.eos_token_id)
+          # Increased max_new_tokens to give the smarter model breathing room
+          outputs = model.generate(**inputs, max_new_tokens=500, temperature=0.1, do_sample=False, pad_token_id=tokenizer.eos_token_id)
           generated = tokenizer.decode(outputs[0], skip_special_tokens=True)
           
-          # Isolate the newly generated part
           impl_code = generated[len(prompt):].strip()
-          
-          # Strip any lines if it tried to output a line break or garbage
-          clean_math = impl_code.split('\n')[0].strip()
-          
-          print(f"Raw Output: current_balance + {clean_math}\n" + "-"*40)
+          print(f"Raw Output:\n{impl_code}\n" + "-"*40)
 
-          # Construct the full valid Lean file
-          final_file_content = f"""
-          def deposit (current_balance : Int) (deposit_amount : Int) : Int :=
-            current_balance + {clean_math}
+          # Find Lean code blocks only
+          matches = re.findall(r"```lean\s*([\s\S]*?)```", impl_code)
+          extracted_lean = matches[0].strip() if matches else impl_code
+
+          final_file_content = f"""{extracted_lean}
 
           -- HARDCODED THEOREMS
           theorem non_negative_balance : True := by trivial
