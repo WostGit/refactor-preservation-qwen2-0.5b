@@ -28,76 +28,76 @@ jobs:
         run: |
           mkdir -p specs proofs
           cat > specs/account_refactor.spec << 'EOF'
-Refactor the Account module as follows:
-- Change internal storage from Vec<(String, i64)> to HashMap<String, i64>
-- Add support for batch_deposit (multiple deposits in one call)
-- Preserve EVERY invariant listed below. Do not omit any.
+          Refactor the Account module as follows:
+          - Change internal storage from Vec<(String, i64)> to HashMap<String, i64>
+          - Add support for batch_deposit (multiple deposits in one call)
+          - Preserve EVERY invariant listed below. Do not omit any.
 
-Required invariants (you MUST create a separate theorem for each):
-1. non_negative_balance: ∀ accounts, balance >= 0 after any operation
-2. money_conservation: total sum of all balances remains constant (no creation or destruction of money)
-3. audit_integrity: every successful operation appends exactly one entry to the audit trail
-4. no_silent_failures: every operation that changes state must be logged
+          Required invariants (you MUST create a separate theorem for each):
+          1. non_negative_balance: ∀ accounts, balance >= 0 after any operation
+          2. money_conservation: total sum of all balances remains constant (no creation or destruction of money)
+          3. audit_integrity: every successful operation appends exactly one entry to the audit trail
+          4. no_silent_failures: every operation that changes state must be logged
 
-Output ONLY a complete Lean 4 file.
-EOF
+          Output ONLY a complete Lean 4 file.
+          EOF
 
       - name: Run Qwen2-0.5B agent (refactor + generate proof obligations)
         run: |
           python - << 'PYEOF'
-import os
-from transformers import AutoModelForCausalLM, AutoTokenizer
-import torch
+          import os
+          from transformers import AutoModelForCausalLM, AutoTokenizer
+          import torch
 
-os.makedirs("proofs", exist_ok=True)
+          os.makedirs("proofs", exist_ok=True)
 
-model_name = "Qwen/Qwen2-0.5B-Instruct"
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModelForCausalLM.from_pretrained(
-    model_name,
-    torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-    device_map="auto",
-    trust_remote_code=True
-)
+          model_name = "Qwen/Qwen2-0.5B-Instruct"
+          tokenizer = AutoTokenizer.from_pretrained(model_name)
+          model = AutoModelForCausalLM.from_pretrained(
+              model_name,
+              torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+              device_map="auto",
+              trust_remote_code=True
+          )
 
-with open("specs/account_refactor.spec") as f:
-    spec = f.read()
+          with open("specs/account_refactor.spec") as f:
+              spec = f.read()
 
-prompt = f"""You are a rigorous formal methods engineer. Your task is to perform the refactor while strictly preserving ALL specified invariants. Never drop or omit any invariant.
+          prompt = f"""You are a rigorous formal methods engineer. Your task is to perform the refactor while strictly preserving ALL specified invariants. Never drop or omit any invariant.
 
-Refactor request:
-{spec}
+          Refactor request:
+          {spec}
 
-Instructions (follow exactly):
-1. Output ONLY valid Lean 4 code. No explanations.
-2. Include the refactored data structure and all functions (including batch_deposit).
-3. For each of the 4 required invariants, write a full `theorem` statement using the exact name:
-   - theorem non_negative_balance
-   - theorem money_conservation
-   - theorem audit_integrity
-   - theorem no_silent_failures
-4. After the theorems, add a comment listing all four invariants you included.
-5. Do not use 'sorry' for the theorem statements.
+          Instructions (follow exactly):
+          1. Output ONLY valid Lean 4 code. No explanations.
+          2. Include the refactored data structure and all functions (including batch_deposit).
+          3. For each of the 4 required invariants, write a full `theorem` statement using the exact name:
+             - theorem non_negative_balance
+             - theorem money_conservation
+             - theorem audit_integrity
+             - theorem no_silent_failures
+          4. After the theorems, add a comment listing all four invariants you included.
+          5. Do not use 'sorry' for the theorem statements.
 
-Begin your response with the complete Lean 4 code only."""
+          Begin your response with the complete Lean 4 code only."""
 
-inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
-outputs = model.generate(
-    **inputs,
-    max_new_tokens=2500,
-    temperature=0.05,
-    do_sample=False,
-    pad_token_id=tokenizer.eos_token_id
-)
+          inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+          outputs = model.generate(
+              **inputs,
+              max_new_tokens=2500,
+              temperature=0.05,
+              do_sample=False,
+              pad_token_id=tokenizer.eos_token_id
+          )
 
-generated = tokenizer.decode(outputs[0], skip_special_tokens=True)
-lean_code = generated.split("Lean 4 code")[-1].strip() if "Lean 4 code" in generated else generated.strip()
+          generated = tokenizer.decode(outputs[0], skip_special_tokens=True)
+          lean_code = generated.split("Lean 4 code")[-1].strip() if "Lean 4 code" in generated else generated.strip()
 
-with open("proofs/agent_refactored_account.lean", "w") as f:
-    f.write(lean_code)
+          with open("proofs/agent_refactored_account.lean", "w") as f:
+              f.write(lean_code)
 
-print("Qwen2-0.5B generated refactor + proofs")
-PYEOF
+          print("Qwen2-0.5B generated refactor + proofs")
+          PYEOF
 
       - name: Cache Lean Lake for faster builds
         uses: actions/cache@v4
@@ -126,8 +126,8 @@ PYEOF
           fi
           
           echo "✅ SUCCESS: Qwen2-0.5B refactored the module"
-          echo "   All 4 invariants explicitly included and machine-checked by Lean 4:"
-          echo "   • non_negative_balance"
-          echo "   • money_conservation"
-          echo "   • audit_integrity"
-          echo "   • no_silent_failures"
+          echo "    All 4 invariants explicitly included and machine-checked by Lean 4:"
+          echo "    • non_negative_balance"
+          echo "    • money_conservation"
+          echo "    • audit_integrity"
+          echo "    • no_silent_failures"
