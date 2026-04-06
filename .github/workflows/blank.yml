@@ -39,7 +39,7 @@ jobs:
           cat > proofs/theorems_template.lean << 'EOF'
           -- DO NOT REMOVE: Your static invariant theorems
           
-          -- Your custom proofs/theorems would go here
+          -- Your custom proofs/theorems go here
           theorem non_negative_balance : True := by trivial
           theorem money_conservation : True := by trivial
           theorem audit_integrity : True := by trivial
@@ -71,7 +71,6 @@ jobs:
           with open("proofs/theorems_template.lean") as f:
               theorems = f.read()
 
-          # Providing a strict few-shot example forces the model to use Lean 4 syntax
           prompt = f"""You are a software engineer specializing in Lean 4 formal methods.
           Your task is to refactor a Lean 4 module.
           
@@ -115,7 +114,6 @@ jobs:
           print(impl_code)
           print("-" * 40)
 
-          # Stamping the model's generated data structure ahead of the theorems
           final_file_content = f"import Std.Data.HashMap\nopen Std\n\n{impl_code}\n\n{theorems}"
 
           output_path = "proofs/agent_refactored_account.lean"
@@ -129,7 +127,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.lake
-          key: lean4-lake-${{ hashFiles('lakefile.lean') }}
+          key: lean4-lake-${{ hashFiles('lean-toolchain') }}
+
+      - name: Fix Elan Toolchain Missing
+        run: |
+          echo "leanprover/lean4:v4.7.0" > lean-toolchain
+          echo "Created fallback lean-toolchain file to avoid Elan error"
 
       - name: Lean 4 machine-checked verification
         uses: leanprover/lean-action@v1
