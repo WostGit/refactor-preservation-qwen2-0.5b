@@ -21,19 +21,18 @@ jobs:
 
       - name: Install dependencies (Qwen2.5 on CPU)
         run: |
-          pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+          pip install torch torchvision torchaudio --index-url [https://download.pytorch.org/whl/cpu](https://download.pytorch.org/whl/cpu)
           pip install transformers huggingface_hub accelerate
 
       - name: Install Elan (Lean Version Manager)
         run: |
-          curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y --default-toolchain leanprover/lean4:v4.7.0
+          curl [https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh](https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh) -sSf | sh -s -- -y --default-toolchain leanprover/lean4:v4.7.0
           echo "$HOME/.elan/bin" >> $GITHUB_PATH
 
-      - name: Run Qwen Agent (Strict System Prompting)
+      - name: Run Qwen Agent (Raw Completion)
         run: |
           python - << 'PYEOF'
           import os
-          import re
           from transformers import AutoModelForCausalLM, AutoTokenizer
           import torch
 
@@ -44,39 +43,35 @@ jobs:
           tokenizer = AutoTokenizer.from_pretrained(model_name)
           model = AutoModelForCausalLM.from_pretrained(model_name, dtype=torch.float32, device_map="auto")
 
-          # Strict system prompt to keep code generation on rails
+          # We force completion by ending the prompt on the literal start of the code
           prompt = """<|im_start|>system
           You are a specialized code completion model for Lean 4.
           Task: Write a single Lean 4 function that adds a list of deposits to a balance.
           Rules: 
-          - Output ONLY the code block.
-          - Do NOT provide `#eval` examples, explanations, or notes.
-          - Do NOT output text before the code block.
+          - Output ONLY the raw executable code.
+          - Do NOT wrap your output in ```lean markdown blocks.
+          - Do NOT provide examples, explanations, or notes.
           <|im_end|>
           <|im_start|>user
           Write a Lean 4 function named `batch_deposit` that takes a `List Int` of amounts and adds them to a `current_balance : Int`.
           <|im_end|>
           <|im_start|>assistant
-          ```lean
-          """
+          def batch_deposit"""
 
           print("\n--- STEP 2: Generating Response ---")
           inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
-          outputs = model.generate(**inputs, max_new_tokens=500, temperature=0.1, do_sample=False, pad_token_id=tokenizer.eos_token_id)
+          outputs = model.generate(**inputs, max_new_tokens=300, temperature=0.1, do_sample=False, pad_token_id=tokenizer.eos_token_id)
           generated = tokenizer.decode(outputs[0], skip_special_tokens=True)
           
-          impl_code = generated[len(prompt):].strip()
-          print(f"Raw Output:\n{impl_code}\n" + "-"*40)
+          # Isolate everything after the prompt header
+          raw_output = generated[len(prompt):].strip()
+          
+          # Reconstruct the file perfectly
+          final_lean_code = f"def batch_deposit {raw_output}"
+          
+          print(f"Raw Output:\n{final_lean_code}\n" + "-"*40)
 
-          # Find Lean code blocks only
-          matches = re.findall(r"```lean\s*([\s\S]*?)```", impl_code)
-          extracted_lean = matches[0].strip() if matches else impl_code
-
-          # STRIP STRAY COLONS OR PUNCTUATION AT THE TOP
-          # Lean expects a command like 'def', so we clean leading non-alphabetic chars
-          extracted_lean = re.sub(r'^[^a-zA-Z]+', '', extracted_lean)
-
-          final_file_content = f"""{extracted_lean}
+          final_file_content = f"""{final_lean_code}
 
           -- HARDCODED THEOREMS
           theorem non_negative_balance : True := by trivial
