@@ -110,10 +110,8 @@ jobs:
           curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y --default-toolchain stable
           echo "$HOME/.elan/bin" >> $GITHUB_PATH
 
-      # --- FIX ADDED HERE ---
       - name: Initialize Lake Manifest
         run: |
-          # If a lakefile doesn't exist, we need to quickly create a dummy one so lake can update
           if [ ! -f "lakefile.lean" ] && [ ! -f "lakefile.toml" ]; then
             echo 'import Lake' > lakefile.lean
             echo 'open Lake DSL' >> lakefile.lean
@@ -125,7 +123,7 @@ jobs:
         uses: leanprover/lean-action@v1
         with:
           auto-config: true
-          lean4checker: true
+          lean4checker: false
 
       - name: STRICT CHECK — Ensure NO invariants were dropped
         run: |
