@@ -1,4 +1,4 @@
-name: Agentic Refactor + Full Invariant Preservation (Qwen2.5-Coder + Lean 4)
+name: Agentic Refactor + Full Invariant Preservation (Qwen2.5-3B + Lean 4)
 
 on:
   push:
@@ -19,72 +19,60 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install dependencies (Qwen2.5 on CPU)
+      - name: Install dependencies (Qwen2.5-3B on CPU)
         run: |
           pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
           pip install transformers huggingface_hub accelerate
-
       - name: Install Elan (Lean Version Manager)
         run: |
           curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y --default-toolchain leanprover/lean4:v4.7.0
           echo "$HOME/.elan/bin" >> $GITHUB_PATH
-
-      - name: Run Qwen Agent (Raw Completion)
+      - name: Run Qwen2.5-3B agent (Extract Code and Stitch)
         run: |
           python - << 'PYEOF'
           import os
+          import re
           from transformers import AutoModelForCausalLM, AutoTokenizer
           import torch
-
-          print("--- STEP 1: Loading Model ---")
-          model_name = "Qwen/Qwen2.5-Coder-1.5B-Instruct"
-          
-          print(f"Loading {model_name}...")
+          print("--- STEP 1: Loading 3B Model ---")
+          model_name = "Qwen/Qwen2.5-3B-Instruct"
           tokenizer = AutoTokenizer.from_pretrained(model_name)
           model = AutoModelForCausalLM.from_pretrained(model_name, dtype=torch.float32, device_map="auto")
-
-          # Forcing raw completion to prevent markdown errors on Line 1
-          prompt = """<|im_start|>system
-          You are a specialized code completion model for Lean 4.
-          Task: Write a single Lean 4 function that adds a list of deposits to a balance.
-          Rules: 
-          - Output ONLY the raw executable code.
-          - Do NOT wrap your output in ```lean markdown blocks.
-          - Do NOT provide examples, explanations, or notes.
-          <|im_end|>
-          <|im_start|>user
-          Write a Lean 4 function named `batch_deposit` that takes a `List Int` of amounts and adds them to a `current_balance : Int`.
-          <|im_end|>
-          <|im_start|>assistant
-          def batch_deposit"""
-
+          prompt = """You are a software engineer specializing in Lean 4 formal methods.
+          Your task is to write a single Lean 4 function.
+          
+          Request:
+          Add support for batch_deposit (multiple deposits in one call).
+          Here is an example of what valid Lean 4 syntax looks like:
+          ```lean
+          def deposit (current_balance : Int) (deposit_amount : Int) : Int :=
+            current_balance + deposit_amount
+          ```
+          Instructions:
+          1. Provide only the requested function.
+          2. Use only primitive operators like `+` and `-`. Do NOT call external library functions like `max`, `min`, `int.max`, or math libraries.
+          3. You MUST wrap your valid Lean 4 response inside a ```lean code block.
+          """
           print("\n--- STEP 2: Generating Response ---")
           inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
-          outputs = model.generate(**inputs, max_new_tokens=300, temperature=0.1, do_sample=False, pad_token_id=tokenizer.eos_token_id)
+          outputs = model.generate(**inputs, max_new_tokens=500, temperature=0.1, do_sample=False, pad_token_id=tokenizer.eos_token_id)
           generated = tokenizer.decode(outputs[0], skip_special_tokens=True)
           
-          # Isolate everything after the prompt header
-          raw_output = generated[len(prompt):].strip()
-          
-          # Reconstruct the file perfectly
-          final_lean_code = f"def batch_deposit {raw_output}"
-          
-          print(f"Raw Output:\n{final_lean_code}\n" + "-"*40)
-
-          final_file_content = f"""{final_lean_code}
-
+          impl_code = generated[len(prompt):].strip()
+          print(f"Raw Output:\n{impl_code}\n" + "-"*40)
+          # Find Lean code blocks only
+          matches = re.findall(r"```lean\s*([\s\S]*?)```", impl_code)
+          extracted_lean = matches[0].strip() if matches else impl_code
+          final_file_content = f"""{extracted_lean}
           -- HARDCODED THEOREMS
           theorem non_negative_balance : True := by trivial
           """
-
           os.makedirs("proofs", exist_ok=True)
           output_path = "proofs/agent_refactored_account.lean"
           with open(output_path, "w") as f:
               f.write(final_file_content)
-
           print(f"File stitched and saved to {output_path}")
           PYEOF
-
       - name: Lean 4 machine-checked verification
         run: |
           lean proofs/agent_refactored_account.lean
