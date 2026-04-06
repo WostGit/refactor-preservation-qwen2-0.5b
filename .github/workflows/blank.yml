@@ -21,12 +21,12 @@ jobs:
 
       - name: Install dependencies (Qwen2.5 on CPU)
         run: |
-          pip install torch torchvision torchaudio --index-url [https://download.pytorch.org/whl/cpu](https://download.pytorch.org/whl/cpu)
+          pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
           pip install transformers huggingface_hub accelerate
 
       - name: Install Elan (Lean Version Manager)
         run: |
-          curl [https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh](https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh) -sSf | sh -s -- -y --default-toolchain leanprover/lean4:v4.7.0
+          curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y --default-toolchain leanprover/lean4:v4.7.0
           echo "$HOME/.elan/bin" >> $GITHUB_PATH
 
       - name: Run Qwen Agent (Raw Completion)
@@ -43,7 +43,7 @@ jobs:
           tokenizer = AutoTokenizer.from_pretrained(model_name)
           model = AutoModelForCausalLM.from_pretrained(model_name, dtype=torch.float32, device_map="auto")
 
-          # We force completion by ending the prompt on the literal start of the code
+          # Forcing raw completion to prevent markdown errors on Line 1
           prompt = """<|im_start|>system
           You are a specialized code completion model for Lean 4.
           Task: Write a single Lean 4 function that adds a list of deposits to a balance.
