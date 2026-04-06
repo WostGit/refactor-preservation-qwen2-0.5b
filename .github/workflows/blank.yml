@@ -52,10 +52,12 @@ jobs:
           os.makedirs("proofs", exist_ok=True)
 
           model_name = "Qwen/Qwen2-0.5B-Instruct"
+          print(f"Loading tokenizer and model: {model_name}")
+          
           tokenizer = AutoTokenizer.from_pretrained(model_name)
           model = AutoModelForCausalLM.from_pretrained(
               model_name,
-              torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+              dtype=torch.float32, # Updated from deprecated torch_dtype
               device_map="auto",
               trust_remote_code=True
           )
@@ -81,22 +83,34 @@ jobs:
 
           Begin your response with the complete Lean 4 code only."""
 
+          print("\n=== SYSTEM PROMPT TO AI ===")
+          print(prompt)
+          print("===========================\n")
+
           inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+          
+          # Fixed generation flags by setting do_sample=True so temperature is valid!
           outputs = model.generate(
               **inputs,
               max_new_tokens=2500,
-              temperature=0.05,
-              do_sample=False,
+              temperature=0.1,
+              do_sample=True, 
               pad_token_id=tokenizer.eos_token_id
           )
 
           generated = tokenizer.decode(outputs[0], skip_special_tokens=True)
+          
+          # Extract Lean code
           lean_code = generated.split("Lean 4 code")[-1].strip() if "Lean 4 code" in generated else generated.strip()
+
+          print("\n=== RAW AI OUTPUT ===")
+          print(lean_code)
+          print("======================\n")
 
           with open("proofs/agent_refactored_account.lean", "w") as f:
               f.write(lean_code)
 
-          print("Qwen2-0.5B generated refactor + proofs")
+          print("Qwen2-0.5B generated refactor + proofs and saved to proofs/agent_refactored_account.lean")
           PYEOF
 
       - name: Cache Lean Lake for faster builds
@@ -129,10 +143,11 @@ jobs:
         run: |
           echo "🔍 Checking that Qwen2-0.5B did NOT drop any invariants (common LLM failure)..."
           
-          grep -q "theorem non_negative_balance" proofs/agent_refactored_account.lean || { echo "❌ CRITICAL: non_negative_balance invariant DROPPED!"; exit 1; }
-          grep -q "theorem money_conservation" proofs/agent_refactored_account.lean || { echo "❌ CRITICAL: money_conservation invariant DROPPED!"; exit 1; }
-          grep -q "theorem audit_integrity" proofs/agent_refactored_account.lean || { echo "❌ CRITICAL: audit_integrity invariant DROPPED!"; exit 1; }
-          grep -q "theorem no_silent_failures" proofs/agent_refactored_account.lean || { echo "❌ CRITICAL: no_silent_failures invariant DROPPED!"; exit 1; }
+          # Added verbose logging of what is being found
+          grep -H "theorem non_negative_balance" proofs/agent_refactored_account.lean || { echo "❌ CRITICAL: non_negative_balance invariant DROPPED!"; exit 1; }
+          grep -H "theorem money_conservation" proofs/agent_refactored_account.lean || { echo "❌ CRITICAL: money_conservation invariant DROPPED!"; exit 1; }
+          grep -H "theorem audit_integrity" proofs/agent_refactored_account.lean || { echo "❌ CRITICAL: audit_integrity invariant DROPPED!"; exit 1; }
+          grep -H "theorem no_silent_failures" proofs/agent_refactored_account.lean || { echo "❌ CRITICAL: no_silent_failures invariant DROPPED!"; exit 1; }
           
           if grep -q "error:" proofs/agent_refactored_account.lean || grep -q "sorry" proofs/agent_refactored_account.lean; then
             echo "❌ Lean found errors or incomplete proofs in agent output"
