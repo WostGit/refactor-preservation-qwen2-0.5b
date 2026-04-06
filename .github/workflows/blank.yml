@@ -1,0 +1,69 @@
+# .github/workflows/refactor-preservation-qwen2-0.5b.yml
+name: Agentic Refactor + Full Invariant Preservation (Qwen2-0.5B + Lean 4)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  qwen2-refactor-verification:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies (Qwen2-0.5B via Transformers on CPU)
+        run: |
+          pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+          pip install transformers huggingface_hub accelerate
+
+      - name: Agent (Qwen2-0.5B) performs refactor + generates ALL proof obligations
+        id: agent
+        run: |
+          python scripts/generate-proof-obligation-qwen2.py \
+            --model "Qwen/Qwen2-0.5B-Instruct" \
+            --scenario refactor \
+            --input specs/account_refactor.spec \
+            --output proofs/agent_refactored_account.lean \
+            --require-invariants "non_negative_balance money_conservation audit_integrity no_silent_failures"
+
+      - name: Cache Lean Lake for faster builds
+        uses: actions/cache@v4
+        with:
+          path: ~/.lake
+          key: lean4-lake-${{ hashFiles('lakefile.lean') }}
+
+      - name: Lean 4 machine-checked verification
+        uses: leanprover/lean-action@v1
+        with:
+          auto-config: true
+          lean4checker: true
+
+      - name: STRICT CHECK — Ensure NO invariants were dropped by the agent
+        run: |
+          echo "🔍 Enforcing that Qwen2-0.5B respected EVERY required invariant (LLMs often drop parts of long specs)..."
+          
+          grep -q "theorem non_negative_balance" proofs/agent_refactored_account.lean || { echo "❌ CRITICAL: non_negative_balance invariant was DROPPED!"; exit 1; }
+          grep -q "theorem money_conservation" proofs/agent_refactored_account.lean || { echo "❌ CRITICAL: money_conservation invariant was DROPPED!"; exit 1; }
+          grep -q "theorem audit_integrity" proofs/agent_refactored_account.lean || { echo "❌ CRITICAL: audit_integrity invariant was DROPPED!"; exit 1; }
+          grep -q "theorem no_silent_failures" proofs/agent_refactored_account.lean || { echo "❌ CRITICAL: no_silent_failures invariant was DROPPED!"; exit 1; }
+          
+          if grep -q "error:" proofs/agent_refactored_account.lean || grep -q "sorry" proofs/agent_refactored_account.lean; then
+            echo "❌ Lean found errors or incomplete proofs in the agent-generated output"
+            exit 1
+          fi
+          
+          echo "✅ FULL SUCCESS: Qwen2-0.5B completed the refactor"
+          echo "   ALL 4 invariants were explicitly included and machine-checked by Lean 4:"
+          echo "   • non_negative_balance"
+          echo "   • money_conservation"
+          echo "   • audit_integrity"
+          echo "   • no_silent_failures"
