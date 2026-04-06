@@ -21,15 +21,15 @@ jobs:
 
       - name: Install dependencies (Qwen2.5 on CPU)
         run: |
-          pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+          pip install torch torchvision torchaudio --index-url [https://download.pytorch.org/whl/cpu](https://download.pytorch.org/whl/cpu)
           pip install transformers huggingface_hub accelerate
 
       - name: Install Elan (Lean Version Manager)
         run: |
-          curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y --default-toolchain leanprover/lean4:v4.7.0
+          curl [https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh](https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh) -sSf | sh -s -- -y --default-toolchain leanprover/lean4:v4.7.0
           echo "$HOME/.elan/bin" >> $GITHUB_PATH
 
-      - name: Run Qwen Agent (Configurable Size)
+      - name: Run Qwen Agent (Strict System Prompting)
         run: |
           python - << 'PYEOF'
           import os
@@ -38,32 +38,26 @@ jobs:
           import torch
 
           print("--- STEP 1: Loading Model ---")
-          
-          # --- TOGGLE MODEL SIZE HERE ---
-          # model_name = "Qwen/Qwen2.5-Coder-0.5B-Instruct"  # Fastest, might struggle with logic
-          model_name = "Qwen/Qwen2.5-Coder-1.5B-Instruct"  # Best speed-to-accuracy balance
-          # model_name = "Qwen/Qwen2.5-Coder-3B-Instruct"    # Smartest, but heavy/slow on free CPU
+          model_name = "Qwen/Qwen2.5-Coder-1.5B-Instruct"
           
           print(f"Loading {model_name}...")
           tokenizer = AutoTokenizer.from_pretrained(model_name)
           model = AutoModelForCausalLM.from_pretrained(model_name, dtype=torch.float32, device_map="auto")
 
-          prompt = """You are a software engineer specializing in Lean 4 formal methods.
-          Your task is to write a single Lean 4 function.
-          
-          Request:
-          Add support for batch_deposit (multiple deposits in one call).
-
-          Here is an example of what valid Lean 4 syntax looks like:
+          # Strict system prompt to keep code generation on rails
+          prompt = """<|im_start|>system
+          You are a specialized code completion model for Lean 4.
+          Task: Write a single Lean 4 function that adds a list of deposits to a balance.
+          Rules: 
+          - Output ONLY the code block.
+          - Do NOT provide `#eval` examples, explanations, or notes.
+          - Do NOT output text before the code block.
+          <|im_end|>
+          <|im_start|>user
+          Write a Lean 4 function named `batch_deposit` that takes a `List Int` of amounts and adds them to a `current_balance : Int`.
+          <|im_end|>
+          <|im_start|>assistant
           ```lean
-          def deposit (current_balance : Int) (deposit_amount : Int) : Int :=
-            current_balance + deposit_amount
-          ```
-
-          Instructions:
-          1. Provide only the requested function.
-          2. Use only primitive operators like `+` and `-`. Do NOT call external library functions like `max`, `min`, `int.max`, or math libraries.
-          3. You MUST wrap your valid Lean 4 response inside a ```lean code block.
           """
 
           print("\n--- STEP 2: Generating Response ---")
