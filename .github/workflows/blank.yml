@@ -105,6 +105,12 @@ jobs:
           path: ~/.lake
           key: lean4-lake-${{ hashFiles('lakefile.lean') }}
 
+      # --- FIX ADDED HERE ---
+      - name: Install Elan and set default toolchain
+        run: |
+          curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y --default-toolchain stable
+          echo "$HOME/.elan/bin" >> $GITHUB_PATH
+
       - name: Lean 4 machine-checked verification
         uses: leanprover/lean-action@v1
         with:
