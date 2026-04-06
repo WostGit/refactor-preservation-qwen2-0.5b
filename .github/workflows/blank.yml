@@ -21,12 +21,12 @@ jobs:
 
       - name: Install dependencies (Qwen2.5 on CPU)
         run: |
-          pip install torch torchvision torchaudio --index-url "https://download.pytorch.org/whl/cpu"
+          pip install torch torchvision torchaudio --index-url "[https://download.pytorch.org/whl/cpu](https://download.pytorch.org/whl/cpu)"
           pip install transformers huggingface_hub accelerate
 
       - name: Install Elan (Lean Version Manager)
         run: |
-          curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y --default-toolchain leanprover/lean4:v4.7.0
+          curl [https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh](https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh) -sSf | sh -s -- -y --default-toolchain leanprover/lean4:v4.7.0
           echo "$HOME/.elan/bin" >> $GITHUB_PATH
 
       - name: Run Qwen Agent (Strict System Prompting)
@@ -71,6 +71,10 @@ jobs:
           # Find Lean code blocks only
           matches = re.findall(r"```lean\s*([\s\S]*?)```", impl_code)
           extracted_lean = matches[0].strip() if matches else impl_code
+
+          # STRIP STRAY COLONS OR PUNCTUATION AT THE TOP
+          # Lean expect a command like 'def', so we clean leading non-alphabetic chars
+          extracted_lean = re.sub(r'^[^a-zA-Z]+', '', extracted_lean)
 
           final_file_content = f"""{extracted_lean}
 
